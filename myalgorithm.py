@@ -75,7 +75,7 @@ def solve_lp(all_orders, all_riders, bike_bundles, walk_bundles, car_bundles):
     return solution
 
 
-def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, max_bundle):
+def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, max_bundle, W):
     bnum = range(max_bundle+1)
 
     l = range(len(all_orders))
@@ -107,9 +107,14 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
                 flag = False
 
                 for ord in bundle1.shop_seq:
-                    if ord in memo_no_merge_order[idx]:
+                    if idx in memo_no_merge_order[ord]:
                         flag = True
                         continue
+
+                # for ord in bundle1.shop_seq:
+                #     if ord in memo_no_merge_order[idx]:
+                #         flag = True
+                #         continue
 
                 if flag:
                     continue
@@ -127,7 +132,7 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
 
                     # weight
                     for ord in bundle1.shop_seq:
-                        weight_matrix[ord][idx] += 0.1
+                        weight_matrix[ord][idx] += W
 
                         if weight_matrix[ord][idx] >= 1:
                             memo_no_merge_order[ord].append(idx)
@@ -149,7 +154,7 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
     for bundle in bundles.values():
         bundling_result += bundle
 
-    return bundling_result
+    return bundling_result, weight_matrix
 
 
 def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
@@ -167,15 +172,17 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
     N = 3       # 최대 오더 개수: N+1
     
     bundles = {}
+    weight = {}
 
     for idx, rider in enumerate(all_riders):
-        bundles[rider.type] = bundling( all_orders=all_orders,
+        bundles[rider.type], weight[rider.type]  = bundling( all_orders=all_orders,
                                         all_riders=all_riders,
                                         K=K,
                                         dist_mat=dist_mat,
                                         rider_type=rider.type,
                                         rider_type_num=idx,
-                                        max_bundle=N )
+                                        max_bundle=N,
+                                        W=0.05 )
         
 
     # solve
@@ -190,5 +197,5 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
     #------------- End of custom algorithm code--------------#
 
 
-    return solution
+    return solution, bundles, weight
 
