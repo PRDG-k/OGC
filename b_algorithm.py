@@ -4,6 +4,66 @@ import math
 import gurobipy as gp
 from gurobipy import GRB
 
+from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpBinary, value
+
+def solve_with_pulp(bike_bundles, walk_bundles, car_bundles, all_orders, all_riders):
+    solution = []
+
+    model = LpProblem("OGC", LpMinimize)
+
+    I = list(range(0, len(bike_bundles)))
+    J = list(range(0, len(walk_bundles)))
+    K = list(range(0, len(car_bundles)))
+    all_order_id = list(range(0, len(all_orders)))
+
+    bundles = []
+    for i in I:
+        bundles.append(bike_bundles[i][0])
+    for j in J:
+        bundles.append(walk_bundles[j][0])
+    for k in K:
+        bundles.append(car_bundles[k][0])
+
+    x = LpVariable.dicts("x", I, 0, 1, LpBinary)
+    y = LpVariable.dicts("y", J, 0, 1, LpBinary)
+    z = LpVariable.dicts("z", K, 0, 1, LpBinary)
+
+    xyz = {i: x[i] for i in I}
+    xyz.update({j + len(bike_bundles): y[j] for j in J})
+    xyz.update({k + len(bike_bundles) + len(walk_bundles): z[k] for k in K})
+
+    # Objective function
+    model += lpSum((all_riders[0].fixed_cost + all_riders[0].var_cost * bike_bundles[i][2] / 100) * x[i] for i in I) + \
+             lpSum((all_riders[1].fixed_cost + all_riders[1].var_cost * walk_bundles[j][2] / 100) * y[j] for j in J) + \
+             lpSum((all_riders[2].fixed_cost + all_riders[2].var_cost * car_bundles[k][2] / 100) * z[k] for k in K)
+
+    # Constraints
+    model += lpSum(x[i] for i in I) <= all_riders[0].available_number
+    model += lpSum(y[j] for j in J) <= all_riders[1].available_number
+    model += lpSum(z[k] for k in K) <= all_riders[2].available_number
+
+    for order in all_order_id:
+        model += lpSum(xyz[i] for i, subset in enumerate(bundles) if order in subset) == 1
+
+    # Solve the model
+    model.solve()
+
+    index_x = [i for i in I if value(x[i]) == 1]
+    index_y = [j for j in J if value(y[j]) == 1]
+    index_z = [k for k in K if value(z[k]) == 1]
+
+    # Construct the solution
+    for i in index_x:
+        solution.append([all_riders[0].type, bike_bundles[i][0], bike_bundles[i][1]])
+
+    for j in index_y:
+        solution.append([all_riders[1].type, walk_bundles[j][0], walk_bundles[j][1]])
+
+    for k in index_z:
+        solution.append([all_riders[2].type, car_bundles[k][0], car_bundles[k][1]])
+
+    return solution
+
 
 def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
 
@@ -23,39 +83,6 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
     bikeOrd = {i:[] for i in bnum}
 
     min_dist, min_index = 0, 0
-    cur_ord_list = all_orders.copy()    # 내부 객체 건드리면 안됨
-
-    # for num in bnum:
-
-    #     for orders in cur_ord_list:
-
-    #         total_dist = []
-    #         shop_or = []
-    #         dlv_or = []
-            
-    #         for shop_pem in permutations([orders.id]):
-
-    #             for dlv_pem in permutations([orders.id]):
-    #                 feasibility_check = test_route_feasibility(all_orders, all_riders[0], shop_pem, dlv_pem)
-
-    #                 if feasibility_check == 0: # feasible!
-    #                     total_dist.append(get_total_distance(K, dist_mat, shop_pem, dlv_pem))
-    #                     shop_or.append([orders.id])
-    #                     dlv_or.append([orders.id])
-
-    #         if total_dist != []:
-    #             min_dist = min(total_dist)
-    #             min_index = total_dist.index(min_dist)
-    #             bikeOrd[1].append([shop_or[min_index], dlv_or[min_index], min_dist])
-
-    #     values = []
-
-    #     for ord in bikeOrd[num]:
-    #         values.append(ord[0])
-
-        
-    #     cur_ord_list = [list(a + b) for a, b in list(itertools.combinations(single_value,2))]
-
 
     for orders in all_orders:
         
@@ -277,66 +304,11 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
     car_orders = car_order_1 + car_order_2 + car_order_3
 
 
-
-    model = gp.Model("OGC")
-
-    I = list(range(0,len(bike_orders)))
-    J = list(range(0,len(walk_orders)))
-    K = list(range(0,len(car_orders)))
-    all_order_id = list(range(0,len(all_orders)))
-
-    bundles = []
-    for i in I:
-        bundles.append(bike_orders[i][0])
-    for j in J:
-        bundles.append(walk_orders[j][0])
-    for k in K:
-        bundles.append(car_orders[k][0])
-
-    x = model.addVars([i for i in I], vtype=GRB.BINARY, name="x")
-    y = model.addVars([j for j in J], vtype=GRB.BINARY, name="y")
-    z = model.addVars([k for k in K], vtype=GRB.BINARY, name="z")
-
-    xyz = {i: x[i] for i in I}
-    xyz.update({j + len(bike_orders): y[j] for j in J})
-    xyz.update({k + len(bike_orders) + len(walk_orders): z[k] for k in K})
-
-    model.setObjective((gp.quicksum((all_riders[0].fixed_cost + all_riders[0].var_cost*bike_orders[i][2]/100)*x[i] for i in I) + gp.quicksum((all_riders[1].fixed_cost + all_riders[1].var_cost*walk_orders[j][2]/100)*y[j] for j in J) + gp.quicksum((all_riders[2].fixed_cost + all_riders[2].var_cost*car_orders[k][2]/100)*z[k] for k in K)), sense=GRB.MINIMIZE)
-
-    model.addConstr(gp.quicksum(x[i] for i in I) <= all_riders[0].available_number)
-    model.addConstr(gp.quicksum(y[j] for j in J) <= all_riders[1].available_number)
-    model.addConstr(gp.quicksum(z[k] for k in K) <= all_riders[2].available_number)
-
-    for order in all_order_id:
-        model.addConstr(gp.quicksum(xyz[i] for i, subset in enumerate(bundles) if order in subset) == 1)
-
-    model.optimize()
-
-    index_x = []
-    for i in I:
-        if x[i].X ==1:
-            index_x.append(i)
-
-    index_y = []
-    for i in J:
-        if y[i].X ==1:
-            index_y.append(i)
-
-    index_z = []
-    for i in K:
-        if z[i].X ==1:
-            index_z.append(i)
-
-
-    # Solution is a list of bundle information
-    for i in index_x:
-        solution.append([all_riders[0].type, bike_orders[i][0], bike_orders[i][1]])
-
-    for i in index_y:
-        solution.append([all_riders[1].type, walk_orders[i][0], walk_orders[i][1]])
-
-    for i in index_z:
-        solution.append([all_riders[2].type, car_orders[i][0], car_orders[i][1]])
+    solution = solve_with_pulp(all_orders=all_orders,
+                        all_riders=all_riders,
+                        bike_bundles=bike_orders,
+                        walk_bundles=walk_orders,
+                        car_bundles=car_orders)
 
 
     #------------- End of custom algorithm code--------------#

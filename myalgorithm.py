@@ -4,6 +4,67 @@ import math
 import gurobipy as gp
 from gurobipy import GRB
 
+from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpBinary, value
+
+def solve_with_pulp(bike_bundles, walk_bundles, car_bundles, all_orders, all_riders):
+    solution = []
+
+    model = LpProblem("OGC", LpMinimize)
+
+    I = list(range(0, len(bike_bundles)))
+    J = list(range(0, len(walk_bundles)))
+    K = list(range(0, len(car_bundles)))
+    all_order_id = list(range(0, len(all_orders)))
+
+    bundles = []
+    for i in I:
+        bundles.append(bike_bundles[i].shop_seq)
+    for j in J:
+        bundles.append(walk_bundles[j].shop_seq)
+    for k in K:
+        bundles.append(car_bundles[k].shop_seq)
+
+    x = LpVariable.dicts("x", I, 0, 1, LpBinary)
+    y = LpVariable.dicts("y", J, 0, 1, LpBinary)
+    z = LpVariable.dicts("z", K, 0, 1, LpBinary)
+
+    xyz = {i: x[i] for i in I}
+    xyz.update({j + len(bike_bundles): y[j] for j in J})
+    xyz.update({k + len(bike_bundles) + len(walk_bundles): z[k] for k in K})
+
+    # Objective function
+    model += lpSum((all_riders[0].fixed_cost + all_riders[0].var_cost * bike_bundles[i].total_dist / 100) * x[i] for i in I) + \
+             lpSum((all_riders[1].fixed_cost + all_riders[1].var_cost * walk_bundles[j].total_dist / 100) * y[j] for j in J) + \
+             lpSum((all_riders[2].fixed_cost + all_riders[2].var_cost * car_bundles[k].total_dist / 100) * z[k] for k in K)
+
+    # Constraints
+    model += lpSum(x[i] for i in I) <= all_riders[0].available_number
+    model += lpSum(y[j] for j in J) <= all_riders[1].available_number
+    model += lpSum(z[k] for k in K) <= all_riders[2].available_number
+
+    for order in all_order_id:
+        model += lpSum(xyz[i] for i, subset in enumerate(bundles) if order in subset) == 1
+
+    # Solve the model
+    model.solve()
+
+    index_x = [i for i in I if value(x[i]) == 1]
+    index_y = [j for j in J if value(y[j]) == 1]
+    index_z = [k for k in K if value(z[k]) == 1]
+
+    # Construct the solution
+    for i in index_x:
+        solution.append([all_riders[0].type, bike_bundles[i].shop_seq, bike_bundles[i].dlv_seq])
+
+    for j in index_y:
+        solution.append([all_riders[1].type, walk_bundles[j].shop_seq, walk_bundles[j].dlv_seq])
+
+    for k in index_z:
+        solution.append([all_riders[2].type, car_bundles[k].shop_seq, car_bundles[k].dlv_seq])
+
+    return solution
+
+
 def solve_lp(all_orders, all_riders, bike_bundles, walk_bundles, car_bundles):
     
     solution = []
@@ -86,15 +147,24 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
 
     bundles = {i: [] for i in bnum}
 
-    # Single-order bundle
-    bundles[0] = [Bundle(
+    def assign_booltype_feasibility(num):
+        if num == 0:
+            return True
+        else:
+            return False
+
+    # Single-order bundle -> feasible check needed
+    bundles[0] = [
+                    Bundle(
                             all_orders,
                             rider=all_riders[rider_type_num],
                             shop_seq=[i],
                             dlv_seq=[i],
                             total_volume=all_orders[i].volume,
-                            total_dist=get_total_distance(K, dist_mat, [i], [i])
-                            ) for i in l]
+                            total_dist=get_total_distance(K, dist_mat, [i], [i]),
+                            # feasible=assign_booltype_feasibility(test_route_feasibility(all_orders, all_riders[rider_type_num], [i], [i]))
+                            ) for i in l if assign_booltype_feasibility(test_route_feasibility(all_orders, all_riders[rider_type_num], [i], [i]))
+                    ]
 
     count = 0
 
@@ -102,15 +172,20 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
 
         for bundle1 in bundles[count]:
 
-            for idx, og_bundle in enumerate(bundles[0]):
+            for og_bundle in bundles[0]:
+                ord_id = og_bundle.shop_seq[0]
+
+                if og_bundle.feasible != True:
+                    continue
 
                 flag = False
 
                 for ord in bundle1.shop_seq:
-                    if idx in memo_no_merge_order[ord]:
+                    if ord_id in memo_no_merge_order[ord]:
                         flag = True
-                        continue
-
+                        break
+                
+                # hard
                 # for ord in bundle1.shop_seq:
                 #     if ord in memo_no_merge_order[idx]:
                 #         flag = True
@@ -132,10 +207,15 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
 
                     # weight
                     for ord in bundle1.shop_seq:
-                        weight_matrix[ord][idx] += W
+                        if count == 0:
+                            weight_matrix[ord][ord_id] += 1
+                            weight_matrix[ord_id][ord] += 1
+                            continue
+                        
+                        weight_matrix[ord][ord_id] += W
 
-                        if weight_matrix[ord][idx] >= 1:
-                            memo_no_merge_order[ord].append(idx)
+                        if weight_matrix[ord][ord_id] >= 1:
+                            memo_no_merge_order[ord].append(ord_id)
                     
                     # hard
                     # for ord in bundle1.shop_seq:
@@ -146,7 +226,6 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
         
     for key in bundles.keys():
         print(f"Length of {rider_type}-bundle {key+1}-orders: {len(bundles[key])}")
-
         
 
     # Result Export
@@ -169,30 +248,35 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
 
     #------------- Custom algorithm code starts from here --------------#
     
-    N = 3       # 최대 오더 개수: N+1
+    N = 4       # 최대 오더 개수: N+1
     
     bundles = {}
     weight = {}
 
     for idx, rider in enumerate(all_riders):
-        bundles[rider.type], weight[rider.type]  = bundling( all_orders=all_orders,
+        bundles[rider.type], weight[rider.type] = bundling( all_orders=all_orders,
                                         all_riders=all_riders,
                                         K=K,
                                         dist_mat=dist_mat,
                                         rider_type=rider.type,
                                         rider_type_num=idx,
                                         max_bundle=N,
-                                        W=0.05 )
+                                        W=0.005 )
         
 
     # solve
-    solution = solve_lp(all_orders=all_orders,
+    # solution = solve_lp(all_orders=all_orders,
+    #                     all_riders=all_riders,
+    #                     bike_bundles=bundles["BIKE"],
+    #                     walk_bundles=bundles["WALK"],
+    #                     car_bundles=bundles["CAR"])
+
+    # solve with pulp fuck gurobipy
+    solution = solve_with_pulp(all_orders=all_orders,
                         all_riders=all_riders,
                         bike_bundles=bundles["BIKE"],
                         walk_bundles=bundles["WALK"],
                         car_bundles=bundles["CAR"])
-
-
 
     #------------- End of custom algorithm code--------------#
 
