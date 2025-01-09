@@ -134,7 +134,7 @@ def solve_lp(all_orders, all_riders, bike_bundles, walk_bundles, car_bundles):
         solution.append([all_riders[2].type, car_bundles[i].shop_seq, car_bundles[i].dlv_seq])
 
     return solution
-
+        
 
 def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, max_bundle, W):
     bnum = range(max_bundle+1)
@@ -147,12 +147,6 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
 
     bundles = {i: [] for i in bnum}
 
-    def assign_booltype_feasibility(num):
-        if num == 0:
-            return True
-        else:
-            return False
-
     # Single-order bundle -> feasible check needed
     bundles[0] = [
                     Bundle(
@@ -163,7 +157,7 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
                             total_volume=all_orders[i].volume,
                             total_dist=get_total_distance(K, dist_mat, [i], [i]),
                             # feasible=assign_booltype_feasibility(test_route_feasibility(all_orders, all_riders[rider_type_num], [i], [i]))
-                            ) for i in l if assign_booltype_feasibility(test_route_feasibility(all_orders, all_riders[rider_type_num], [i], [i]))
+                            ) for i in l if test_route_feasibility(all_orders, all_riders[rider_type_num], [i], [i]) == 0
                     ]
 
     count = 0
@@ -208,14 +202,19 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
                     # weight
                     for ord in bundle1.shop_seq:
                         if count == 0:
-                            weight_matrix[ord][ord_id] += 1
-                            weight_matrix[ord_id][ord] += 1
-                            continue
-                        
-                        weight_matrix[ord][ord_id] += W
+                            weight_matrix[ord][ord_id] = 1
+                            weight_matrix[ord_id][ord] = 1
 
-                        if weight_matrix[ord][ord_id] >= 1:
                             memo_no_merge_order[ord].append(ord_id)
+                            memo_no_merge_order[ord_id].append(ord)
+
+                        else:
+                            weight_matrix[ord][ord_id] += W
+
+                            if weight_matrix[ord][ord_id] >= 1:
+                                memo_no_merge_order[ord].append(ord_id)
+
+                        
                     
                     # hard
                     # for ord in bundle1.shop_seq:
@@ -224,8 +223,8 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
 
         count += 1
         
-    for key in bundles.keys():
-        print(f"Length of {rider_type}-bundle {key+1}-orders: {len(bundles[key])}")
+    # for key in bundles.keys():
+    #     print(f"Length of {rider_type}-bundle {key+1}-orders: {len(bundles[key])}")
         
 
     # Result Export
@@ -261,7 +260,7 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
                                         rider_type=rider.type,
                                         rider_type_num=idx,
                                         max_bundle=N,
-                                        W=0.005 )
+                                        W=0.01 )
         
 
     # solve
