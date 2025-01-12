@@ -3,8 +3,11 @@ import itertools
 import math
 import gurobipy as gp
 from gurobipy import GRB
+import pickle
+import xgboost as xgb
+import pandas as pd
 
-from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpBinary, value, PULP_CBC_CMD
+from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpBinary, value
 
 def solve_with_pulp(bike_bundles, walk_bundles, car_bundles, all_orders, all_riders):
     solution = []
@@ -136,12 +139,51 @@ def solve_lp(all_orders, all_riders, bike_bundles, walk_bundles, car_bundles):
     return solution
         
 
+def test_deadline(all_orders, rider, shop_seq, dlv_seq):
+    pickup_times, dlv_times = get_pd_times(all_orders, rider, shop_seq, dlv_seq)
+
+    for k, dlv_time in dlv_times.items():
+        return all_orders[k].deadline - dlv_time
+    
+
 def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, max_bundle, W):
+    xgb_model = pickle.load(open('xgb_v_t.model', 'rb'))
+
+    # init weight
+    volume_array = []
+    tw_array = []
+
+    for order1 in all_orders:
+        for order2 in all_orders:
+            volume_array.append(
+                all_riders[rider_type_num].capa - (order1.volume + order2.volume)
+                )
+
+            merged_orders = [order1.id, order2.id]
+            max_gap = -100000
+            for shop_pem in permutations(merged_orders):
+                for dlv_pem in permutations(merged_orders):
+                    gap = test_deadline(
+                        all_orders, all_riders[rider_type_num], shop_pem, dlv_pem
+                        )
+
+                    if gap > max_gap:
+                        max_gap = gap
+                    
+            tw_array.append(max_gap)
+    
+    model_input = xgb.DMatrix(pd.DataFrame({'vol': volume_array, 'tw': tw_array }))
+    
+    pred_weight = xgb_model.predict(model_input)
+
+
     bnum = range(max_bundle+1)
 
     l = range(len(all_orders))
 
-    weight_matrix = [[0 for _ in l] for _ in l]
+    # weight_matrix = [[0 for _ in l] for _ in l]
+    pred_weight = pred_weight / 2
+    weight_matrix = pred_weight.reshape(len(all_orders), len(all_orders)).tolist()
 
     memo_no_merge_order = {i:[i] for i in l}
 
@@ -178,12 +220,6 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
                     if ord_id in memo_no_merge_order[ord]:
                         flag = True
                         break
-                
-                # hard
-                # for ord in bundle1.shop_seq:
-                #     if ord in memo_no_merge_order[idx]:
-                #         flag = True
-                #         continue
 
                 if flag:
                     continue
@@ -194,11 +230,11 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
 
                 if new_bundle is not None:
                     bundles[count + 1].append(new_bundle)
-                    
+
+                    # for ord in bundle1.shop_seq:
+                    #     if weight_matrix[ord][ord_id] > 0:
+                    #         weight_matrix[ord][ord_id] -= W
                 else:
-                    # soft
-                    # for ord in bundle1.shop_seq:s
-                    #     memo_no_merge_order[ord].append(idx)
 
                     # weight
                     for ord in bundle1.shop_seq:
@@ -215,17 +251,11 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
                             if weight_matrix[ord][ord_id] >= 1:
                                 memo_no_merge_order[ord].append(ord_id)
 
-                        
-                    
-                    # hard
-                    # for ord in bundle1.shop_seq:
-                    #     memo_no_merge_order[idx].append(ord)
-
 
         count += 1
         
-    # for key in bundles.keys():
-    #     print(f"Length of {rider_type}-bundle {key+1}-orders: {len(bundles[key])}")
+    for key in bundles.keys():
+        print(f"Length of {rider_type}-bundle {key+1}-orders: {len(bundles[key])}")
         
 
     # Result Export
@@ -261,7 +291,7 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
                                         rider_type=rider.type,
                                         rider_type_num=idx,
                                         max_bundle=N,
-                                        W=0.05 )
+                                        W=0.01 )
         
 
     # solve
