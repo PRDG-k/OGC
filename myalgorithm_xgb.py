@@ -7,7 +7,7 @@ import pickle
 import xgboost as xgb
 import pandas as pd
 
-from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpBinary, value
+from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpBinary, value, PULP_CBC_CMD
 
 def solve_with_pulp(bike_bundles, walk_bundles, car_bundles, all_orders, all_riders):
     solution = []
@@ -49,7 +49,7 @@ def solve_with_pulp(bike_bundles, walk_bundles, car_bundles, all_orders, all_rid
         model += lpSum(xyz[i] for i, subset in enumerate(bundles) if order in subset) == 1
 
     # Solve the model
-    model.solve()
+    model.solve(PULP_CBC_CMD(msg=True))
 
     index_x = [i for i in I if value(x[i]) == 1]
     index_y = [j for j in J if value(y[j]) == 1]
@@ -291,7 +291,7 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
                                         rider_type=rider.type,
                                         rider_type_num=idx,
                                         max_bundle=N,
-                                        W=0.01 )
+                                        W=0.1 )
         
 
     # solve

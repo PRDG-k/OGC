@@ -261,7 +261,7 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
                                         rider_type=rider.type,
                                         rider_type_num=idx,
                                         max_bundle=N,
-                                        W=0.05 )
+                                        W=0.1 )
         
 
     # solve
