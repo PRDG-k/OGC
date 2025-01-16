@@ -49,7 +49,8 @@ def solve_with_pulp(bike_bundles, walk_bundles, car_bundles, all_orders, all_rid
         model += lpSum(xyz[i] for i, subset in enumerate(bundles) if order in subset) == 1
 
     # Solve the model
-    model.solve(PULP_CBC_CMD(msg=True))
+    # PULP_CBC_CMD(msg=1)
+    model.solve(PULP_CBC_CMD(msg=1))
 
     index_x = [i for i in I if value(x[i]) == 1]
     index_y = [j for j in J if value(y[j]) == 1]
@@ -147,7 +148,7 @@ def test_deadline(all_orders, rider, shop_seq, dlv_seq):
     
 
 def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, max_bundle, W):
-    xgb_model = pickle.load(open('xgb_v_t.model', 'rb'))
+    xgb_model = pickle.load(open(f'xgb_v_t_{rider_type}.model', 'rb'))
 
     # init weight
     volume_array = []

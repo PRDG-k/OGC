@@ -272,11 +272,11 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
     #                     car_bundles=bundles["CAR"])
 
     # solve with pulp fuck gurobipy
-    solution = solve_with_pulp(all_orders=all_orders,
-                        all_riders=all_riders,
-                        bike_bundles=bundles["BIKE"],
-                        walk_bundles=bundles["WALK"],
-                        car_bundles=bundles["CAR"])
+    # solution = solve_with_pulp(all_orders=all_orders,
+    #                     all_riders=all_riders,
+    #                     bike_bundles=bundles["BIKE"],
+    #                     walk_bundles=bundles["WALK"],
+    #                     car_bundles=bundles["CAR"])
 
     #------------- End of custom algorithm code--------------#
 

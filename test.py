@@ -43,7 +43,7 @@ for file_name in problem_list:
     try:
         # Run algorithm!
         print(f"#----------------Start {re_file_name}----------------#")
-        solution, bundles_list[re_file_name], weight_list[re_file_name] = a1(K, ALL_ORDERS, ALL_RIDERS, DIST, timelimit)
+        solution, bundles_list[re_file_name], weight_list[re_file_name] = test1(K, ALL_ORDERS, ALL_RIDERS, DIST, timelimit)
     except Exception as e:
         exception = f'{e}'
         print(traceback.format_exc())
