@@ -50,7 +50,7 @@ def solve_with_pulp(bike_bundles, walk_bundles, car_bundles, all_orders, all_rid
 
     # Solve the model
     # PULP_CBC_CMD(msg=1)
-    model.solve(PULP_CBC_CMD(msg=1))
+    model.solve(PULP_CBC_CMD(msg=False))
 
     index_x = [i for i in I if value(x[i]) == 1]
     index_y = [j for j in J if value(y[j]) == 1]
@@ -147,7 +147,7 @@ def test_deadline(all_orders, rider, shop_seq, dlv_seq):
         return all_orders[k].deadline - dlv_time
     
 
-def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, max_bundle, W):
+def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, max_bundle, W, M):
     xgb_model = pickle.load(open(f'xgb_v_t_{rider_type}.model', 'rb'))
 
     # init weight
@@ -257,17 +257,21 @@ def bundling(all_orders, all_riders, K, dist_mat, rider_type, rider_type_num, ma
         
     for key in bundles.keys():
         print(f"Length of {rider_type}-bundle {key+1}-orders: {len(bundles[key])}")
-        
+
+        sorted(bundles[key], key=lambda x: x.cost)
 
     # Result Export
     bundling_result = []
-    for bundle in bundles.values():
-        bundling_result += bundle
+    for bundles_ in bundles.values():
+        if len(bundles_) <= M:
+            bundling_result += bundles_
+        else:
+            bundling_result += bundles_[:M+1]
 
     return bundling_result, weight_matrix
 
 
-def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
+def algorithm_xgb(K, all_orders, all_riders, dist_mat, timelimit=60, W=0.1, M=100000):
     
     start_time = time.time()
 
@@ -292,7 +296,8 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
                                         rider_type=rider.type,
                                         rider_type_num=idx,
                                         max_bundle=N,
-                                        W=0.1 )
+                                        W=W,
+                                        M=M)
         
 
     # solve
@@ -312,5 +317,5 @@ def algorithm(K, all_orders, all_riders, dist_mat, timelimit=60):
     #------------- End of custom algorithm code--------------#
 
 
-    return solution, bundles, weight
+    return solution, weight
 
